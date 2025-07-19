@@ -1,6 +1,6 @@
 # Burp Suite Grouped History Extension
 
-一个功能强大的Burp Suite扩展，用于将HTTP请求和响应按分组进行组织和管理，提升渗透测试和Web应用安全评估的效率。
+Burp Suite扩展，用于将HTTP请求和响应按分组进行组织和管理，提升渗透测试和Web应用安全评估的效率。
 <img width="1733" height="930" alt="image" src="https://github.com/user-attachments/assets/63658f74-922d-4928-a29a-f39290375f1f" />
 
 
