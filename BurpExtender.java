@@ -56,8 +56,9 @@ public class BurpExtender implements BurpExtension, ContextMenuItemsProvider {
         groupButtonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
         topPanel.add(groupButtonsPanel, BorderLayout.WEST);
 
-        // 右侧：新增分组按钮
+        // 右侧：新增和删除分组按钮
         JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+
         JButton addGroupBtn = new JButton("新增分组");
         addGroupBtn.addActionListener(e -> {
             String groupName = JOptionPane.showInputDialog("输入分组名：");
@@ -69,7 +70,26 @@ public class BurpExtender implements BurpExtension, ContextMenuItemsProvider {
                 refreshRequestList();
             }
         });
+
+        JButton deleteGroupBtn = new JButton("删除分组");
+        deleteGroupBtn.addActionListener(e -> {
+            if (currentSelectedGroup == null || groupMap.isEmpty()) {
+                JOptionPane.showMessageDialog(mainPanel, "没有可删除的分组", "提示", JOptionPane.INFORMATION_MESSAGE);
+                return;
+            }
+
+            int result = JOptionPane.showConfirmDialog(mainPanel,
+                    "确定要删除分组 '" + currentSelectedGroup + "' 吗？\n这将删除该分组中的所有请求。",
+                    "确认删除", JOptionPane.YES_NO_OPTION);
+
+            if (result == JOptionPane.YES_OPTION) {
+                groupMap.remove(currentSelectedGroup);
+                refreshAllGroupButtons();
+            }
+        });
+
         rightPanel.add(addGroupBtn);
+        rightPanel.add(deleteGroupBtn);
         topPanel.add(rightPanel, BorderLayout.EAST);
 
         mainPanel.add(topPanel, BorderLayout.NORTH);
@@ -78,6 +98,7 @@ public class BurpExtender implements BurpExtension, ContextMenuItemsProvider {
         requestListModel = new DefaultListModel<>();
         requestList = new JList<>(requestListModel);
         requestList.setCellRenderer(new RequestResponseCellRenderer());
+        requestList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION); // 允许多选
         requestList.addListSelectionListener(e -> {
             HttpRequestResponse selected = requestList.getSelectedValue();
             if (selected != null) {
@@ -89,6 +110,14 @@ public class BurpExtender implements BurpExtension, ContextMenuItemsProvider {
                 }
             }
         });
+
+        // 为请求列表添加右键菜单
+        JPopupMenu requestListPopupMenu = new JPopupMenu();
+        JMenuItem removeFromGroupItem = new JMenuItem("从当前分组中移除");
+        removeFromGroupItem.addActionListener(e -> removeSelectedRequestsFromCurrentGroup());
+        requestListPopupMenu.add(removeFromGroupItem);
+        requestList.setComponentPopupMenu(requestListPopupMenu);
+
         JScrollPane listScrollPane = new JScrollPane(requestList);
 
         // 底部 请求/响应查看器
@@ -157,6 +186,32 @@ public class BurpExtender implements BurpExtension, ContextMenuItemsProvider {
             for (HttpRequestResponse item : groupMap.getOrDefault(currentSelectedGroup, new ArrayList<>())) {
                 requestListModel.addElement(item);
             }
+        }
+    }
+
+    // 新增：从当前分组中移除选中的请求
+    private void removeSelectedRequestsFromCurrentGroup() {
+        if (currentSelectedGroup == null) {
+            JOptionPane.showMessageDialog(mainPanel, "请先选择一个分组", "提示", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        List<HttpRequestResponse> selectedRequests = requestList.getSelectedValuesList();
+        if (selectedRequests.isEmpty()) {
+            JOptionPane.showMessageDialog(mainPanel, "请先选择要移除的请求", "提示", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        int result = JOptionPane.showConfirmDialog(mainPanel,
+                "确定要从分组 '" + currentSelectedGroup + "' 中移除 " + selectedRequests.size() + " 个请求吗？",
+                "确认移除", JOptionPane.YES_NO_OPTION);
+
+        if (result == JOptionPane.YES_OPTION) {
+            List<HttpRequestResponse> groupList = groupMap.get(currentSelectedGroup);
+            for (HttpRequestResponse request : selectedRequests) {
+                groupList.remove(request);
+            }
+            refreshRequestList();
         }
     }
 
