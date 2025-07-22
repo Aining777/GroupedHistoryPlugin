@@ -2,12 +2,10 @@ package burp;
 
 import burp.api.montoya.BurpExtension;
 import burp.api.montoya.MontoyaApi;
-import burp.api.montoya.core.ToolType;
 import burp.api.montoya.http.message.HttpRequestResponse;
 import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.http.message.responses.HttpResponse;
 import burp.api.montoya.persistence.Preferences;
-import burp.api.montoya.ui.Selection;
 import burp.api.montoya.ui.UserInterface;
 import burp.api.montoya.ui.contextmenu.ContextMenuEvent;
 import burp.api.montoya.ui.contextmenu.ContextMenuItemsProvider;
@@ -20,9 +18,11 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -87,6 +87,7 @@ public class BurpExtender implements BurpExtension, ContextMenuItemsProvider {
         api.extension().setName("Grouped History");
         api.userInterface().registerContextMenuItemsProvider(this);
 
+        // 清除现有数据，确保新项目从零开始
         clearData();
 
         SwingUtilities.invokeLater(() -> {
@@ -95,15 +96,17 @@ public class BurpExtender implements BurpExtension, ContextMenuItemsProvider {
             loadDataFromProject();
         });
     }
+
     private void clearData() {
         try {
             Preferences preferences = api.persistence().preferences();
-            preferences.deleteString(PERSISTENCE_KEY); // 删除存储的数据
-            groupMap.clear(); // 清空内存中的分组数据
+            preferences.deleteString(PERSISTENCE_KEY);
+            groupMap.clear();
         } catch (Exception e) {
             api.logging().logToError("Failed to clear grouped history data: " + e.getMessage());
         }
     }
+
     private void createUI() {
         mainPanel = new JPanel(new BorderLayout());
         mainPanel.setBackground(BACKGROUND_COLOR);
@@ -138,7 +141,6 @@ public class BurpExtender implements BurpExtension, ContextMenuItemsProvider {
         titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 14f));
         titleLabel.setBorder(new EmptyBorder(5, 0, 15, 0));
 
-        // 工具栏按钮
         JPanel toolbarPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 5, 0));
         toolbarPanel.setBackground(SIDEBAR_COLOR);
 
@@ -238,9 +240,9 @@ public class BurpExtender implements BurpExtension, ContextMenuItemsProvider {
         removeBtn.setToolTipText("从当前分组中移除选中的请求");
         removeBtn.addActionListener(e -> removeSelectedRequestsFromCurrentGroup());
 
-        JButton exportBtn = createStyledButton(ICON_EXPORT + " 导出", PRIMARY_COLOR);
-        exportBtn.setToolTipText("导出当前分组的请求");
-        exportBtn.addActionListener(e -> exportCurrentGroup());
+        JButton exportBtn = createStyledButton(ICON_EXPORT + " 导出全部", PRIMARY_COLOR);
+        exportBtn.setToolTipText("导出所有分组的URL");
+        exportBtn.addActionListener(e -> exportAllGroups());
 
         listToolbar.add(removeBtn);
         listToolbar.add(exportBtn);
@@ -522,14 +524,65 @@ public class BurpExtender implements BurpExtension, ContextMenuItemsProvider {
         }
     }
 
-    private void exportCurrentGroup() {
-        if (currentSelectedGroup == null || groupMap.get(currentSelectedGroup).isEmpty()) {
-            JOptionPane.showMessageDialog(mainPanel, "当前分组为空，无法导出", "提示", JOptionPane.INFORMATION_MESSAGE);
+    private void exportAllGroups() {
+        if (groupMap.isEmpty()) {
+            JOptionPane.showMessageDialog(mainPanel, "没有可导出的分组", "提示", JOptionPane.INFORMATION_MESSAGE);
             return;
         }
 
-        // 这里可以实现导出功能
-        showStatusMessage("导出功能开发中...", PRIMARY_COLOR);
+        // 创建文件选择器
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setDialogTitle("导出所有分组的URL");
+        fileChooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
+        fileChooser.setSelectedFile(new File("all_groups_export.txt"));
+        fileChooser.setFileFilter(new javax.swing.filechooser.FileFilter() {
+            @Override
+            public boolean accept(File f) {
+                return f.isDirectory() || f.getName().toLowerCase().endsWith(".txt");
+            }
+
+            @Override
+            public String getDescription() {
+                return "Text Files (*.txt)";
+            }
+        });
+
+        int result = fileChooser.showSaveDialog(mainPanel);
+        if (result == JFileChooser.APPROVE_OPTION) {
+            File selectedFile = fileChooser.getSelectedFile();
+            // 确保文件有 .txt 扩展名
+            if (!selectedFile.getName().toLowerCase().endsWith(".txt")) {
+                selectedFile = new File(selectedFile.getAbsolutePath() + ".txt");
+            }
+
+            try {
+                // 构建导出内容
+                StringBuilder exportContent = new StringBuilder();
+                for (Map.Entry<String, List<HttpRequestResponse>> entry : groupMap.entrySet()) {
+                    String groupName = entry.getKey();
+                    List<HttpRequestResponse> requests = entry.getValue();
+                    exportContent.append("【").append(groupName).append("】\n");
+                    for (HttpRequestResponse requestResponse : requests) {
+                        String url = requestResponse.request().path();
+                        if (requestResponse.request().query() != null && !requestResponse.request().query().isEmpty()) {
+                            url += "?" + requestResponse.request().query();
+                        }
+                        exportContent.append(url).append("\n");
+                    }
+                    exportContent.append("\n"); // 分组间空一行
+                }
+
+                // 写入文件
+                try (FileWriter writer = new FileWriter(selectedFile, StandardCharsets.UTF_8)) {
+                    writer.write(exportContent.toString());
+                }
+
+                showStatusMessage("所有分组已导出到 " + selectedFile.getAbsolutePath(), SUCCESS_COLOR);
+            } catch (IOException e) {
+                api.logging().logToError("Failed to export all groups: " + e.getMessage());
+                showStatusMessage("导出失败: " + e.getMessage(), DANGER_COLOR);
+            }
+        }
     }
 
     @Override
@@ -576,7 +629,6 @@ public class BurpExtender implements BurpExtension, ContextMenuItemsProvider {
         return menuItems;
     }
 
-    // 修复的保存方法 - 使用 Preferences API
     private void saveDataToProject() {
         try {
             Preferences preferences = api.persistence().preferences();
@@ -615,7 +667,6 @@ public class BurpExtender implements BurpExtension, ContextMenuItemsProvider {
         }
     }
 
-    // 修复的加载方法 - 使用 Preferences API
     private void loadDataFromProject() {
         try {
             Preferences preferences = api.persistence().preferences();
@@ -672,7 +723,6 @@ public class BurpExtender implements BurpExtension, ContextMenuItemsProvider {
         }
     }
 
-    // 增强的请求响应单元格渲染器
     private static class EnhancedRequestResponseCellRenderer extends DefaultListCellRenderer {
         @Override
         public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
