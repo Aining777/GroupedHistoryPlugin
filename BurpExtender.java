@@ -87,13 +87,23 @@ public class BurpExtender implements BurpExtension, ContextMenuItemsProvider {
         api.extension().setName("Grouped History");
         api.userInterface().registerContextMenuItemsProvider(this);
 
+        clearData();
+
         SwingUtilities.invokeLater(() -> {
             createUI();
             api.userInterface().registerSuiteTab("Grouped History", mainPanel);
             loadDataFromProject();
         });
     }
-
+    private void clearData() {
+        try {
+            Preferences preferences = api.persistence().preferences();
+            preferences.deleteString(PERSISTENCE_KEY); // 删除存储的数据
+            groupMap.clear(); // 清空内存中的分组数据
+        } catch (Exception e) {
+            api.logging().logToError("Failed to clear grouped history data: " + e.getMessage());
+        }
+    }
     private void createUI() {
         mainPanel = new JPanel(new BorderLayout());
         mainPanel.setBackground(BACKGROUND_COLOR);
